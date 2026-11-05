@@ -29,13 +29,16 @@ class OdidoDataUpdateCoordinator(DataUpdateCoordinator[UsageData]):
     async def _async_update_data(self) -> UsageData:
         try:
             result = await self.client.async_get_usage()
-            cookies = self.client.export_cookies()
-            if cookies != self.entry.data.get(CONF_COOKIES):
-                self.hass.config_entries.async_update_entry(
-                    self.entry, data={**self.entry.data, CONF_COOKIES: cookies}
-                )
             return result
         except OdidoInvalidAuth as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except OdidoError as err:
             raise UpdateFailed(str(err)) from err
+        finally:
+            data = dict(self.entry.data)
+            data["auto_reauth_blocked"] = self.client.auto_reauth_blocked
+            cookies = self.client.export_cookies()
+            if cookies:
+                data[CONF_COOKIES] = cookies
+            if data != self.entry.data:
+                self.hass.config_entries.async_update_entry(self.entry, data=data)

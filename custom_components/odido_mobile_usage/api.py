@@ -10,13 +10,16 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from email.utils import formatdate
 from html.parser import HTMLParser
+from http.cookies import Morsel, SimpleCookie
 from urllib.parse import urljoin
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, CookieJar
 from yarl import URL
 
 from .const import DEFAULT_USAGE_URL, LOGIN_URL
+from .cookie_store import valid_cookies
 from .website import UsageParseError, parse_usage
 
 
@@ -146,11 +149,20 @@ def _looks_logged_in(url: str, html: str) -> bool:
     )
 
 
+class _OdidoCookieJar(CookieJar):
+    """Keep Odido's original token encoding when aiohttp builds the header."""
+
+    def _build_morsel(self, cookie):
+        morsel = Morsel()
+        morsel.set(cookie.key, cookie.value, cookie.coded_value)
+        return morsel
+
+
 class OdidoClient:
     """Use an account-specific jar, never HA's shared session cookies."""
 
     def __init__(
-        self, session, username, password, *, usage_url=DEFAULT_USAGE_URL, cookies=None
+        self, session, username, password, *, usage_url=DEFAULT_USAGE_URL, cookies=None, auto_reauth_blocked=False
     ):
         self.username = username
         self._password = password
@@ -159,11 +171,14 @@ class OdidoClient:
         self._pending_url = None
         self._finalize_form = None
         self._authenticated = bool(cookies)
+        self.auto_reauth_blocked = auto_reauth_blocked
         self._last_response = None
         self._usage_debug = {}
-        self._cookies = CookieJar()
+        self._cookies = _OdidoCookieJar()
         if cookies:
-            self._cookies.update_cookies(cookies, response_url=URL(self.usage_url))
+            if not valid_cookies(cookies):
+                raise OdidoParseError("Invalid saved cookie format")
+            self._restore_cookies(cookies)
 
     @staticmethod
     def _safe_url(url):
@@ -230,12 +245,16 @@ class OdidoClient:
     async def _post_form(self, url, data, *, ajax=False, expect_json=False):
         return await self._request("POST", url, data, ajax=ajax, expect_json=expect_json)
 
-    async def async_start_login(self):
+    async def async_start_login(self, *, preserve_cookies=False):
         self._pending_form = self._pending_url = None
         self._finalize_form = None
         self._authenticated = False
-        self._cookies.clear()
+        if not preserve_cookies:
+            self._cookies.clear()
         url, html = await self._get_text(LOGIN_URL)
+        if preserve_cookies and _looks_logged_in(url, html):
+            self._authenticated = True
+            return False
         form = _find_login_form(parse_forms(html))
         if form is None:
             raise OdidoParseError("Odido login form missing")
@@ -323,7 +342,11 @@ class OdidoClient:
             self._pending_form = self._pending_url = self._finalize_form = None
             final_url = self._safe_url(urljoin(target, final.action))
             try:
-                url, html = await self._post_form(final_url, dict(final.fields))
+                data = dict(final.fields)
+                # Match the website's "remember this device" checkbox.
+                if "IsDeviceRecognitionOpted" in data:
+                    data["IsDeviceRecognitionOpted"] = "Yes"
+                url, html = await self._post_form(final_url, data)
             except (OdidoConnectionError, OdidoInvalidAuth, OdidoParseError):
                 raise OdidoChallengeExpired(
                     "Odido session finalization failed; restart login"
@@ -348,6 +371,21 @@ class OdidoClient:
         self._authenticated = True
 
     async def async_get_usage(self):
+        try:
+            return await self._get_usage_once()
+        except OdidoInvalidAuth:
+            if self.auto_reauth_blocked or not self._password or not self._cookies or self._pending_form is not None:
+                raise
+            # Persisted by the coordinator even when login/transport/MFA fails.
+            # Keep trust cookies and never request another SMS on reload/restart.
+            self.auto_reauth_blocked = True
+            if await self.async_start_login(preserve_cookies=True):
+                raise OdidoInvalidAuth("Odido requires verification; sign in once") from None
+            result = await self._get_usage_once()
+            self.auto_reauth_blocked = False
+            return result
+
+    async def _get_usage_once(self):
         if self._pending_form is not None:
             raise OdidoInvalidAuth("Verification is not complete")
         pages = []
@@ -446,13 +484,51 @@ class OdidoClient:
             self._safe_url(urljoin(url, form.action)), data, ajax=True
         )
 
+    def _restore_cookies(self, payload):
+        """Restore exact wire encoding and scope, including session cookies."""
+        if payload.get("version") == 2:
+            for item in payload.get("items", []):
+                domain = item.get("domain", "www.odido.nl").lstrip(".")
+                if domain not in ("www.odido.nl", "odido.nl"):
+                    continue
+                cookie = Morsel()
+                cookie.set(item["name"], item["value"], item["coded_value"])
+                for key in ("path", "secure", "httponly", "samesite", "expires"):
+                    if item.get(key):
+                        cookie[key] = item[key]
+                if not item.get("host_only", False):
+                    cookie["domain"] = domain
+                self._cookies.update_cookies({cookie.key: cookie}, response_url=URL("https://" + domain + "/"))
+        else:
+            # Old versions stored values only. Odido emits raw cookie tokens;
+            # SimpleCookie assignment would add quotes to tokens containing '='.
+            for key, value in payload.items():
+                cookie = SimpleCookie()
+                cookie.load(key + "=" + value)
+                if key not in cookie or cookie[key].value != value:
+                    cookie = SimpleCookie({key: value})
+                cookie[key]["path"] = "/"
+                self._cookies.update_cookies(cookie, response_url=URL(LOGIN_URL))
+
     def export_cookies(self):
         if self._pending_form is not None or not self._authenticated:
             return {}
-        return {
-            key: value.value
-            for key, value in self._cookies.filter_cookies(URL(self.usage_url)).items()
-        }
+        items = []
+        # Iteration removes expired cookies. Convert Max-Age to an absolute
+        # expiry so restoring a saved session cannot extend a cookie's lifetime.
+        for cookie in self._cookies:
+            domain = cookie["domain"].lstrip(".")
+            if domain not in ("www.odido.nl", "odido.nl"):
+                continue
+            item = {"name": cookie.key, "value": cookie.value, "coded_value": cookie.coded_value,
+                    "domain": domain, "host_only": ((domain, cookie.key) in self._cookies._host_only_cookies or (domain, cookie["path"].rstrip("/"), cookie.key) in self._cookies._host_only_cookies)}
+            for key in ("path", "secure", "httponly", "samesite", "expires"):
+                item[key] = cookie[key]
+            expiry = self._cookies._expirations.get((cookie["domain"], cookie["path"].rstrip("/"), cookie.key))
+            if expiry is not None:
+                item["expires"] = formatdate(expiry, usegmt=True)
+            items.append(item)
+        return {"version": 2, "items": items} if items else {}
 
     def debug_summary(self):
         return {"verification_pending": self._pending_form is not None, "usage_structure": self._usage_debug, "last_response": self._last_response}

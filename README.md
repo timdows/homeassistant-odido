@@ -134,3 +134,20 @@ modus, inclusief hoge resolutie. Het pictogram gebruikt het officiële
 Het woordmerk volgt de geometrie en kleuren van het officiële
 [Odido-logo](https://www.odido.nl/Assets/Lfwd/Static/odido-logo.svg); de donkere
 variant gebruikt een wit woordmerk voor contrast. Odido behoudt de merkrechten.
+
+### Sessies behouden (0.2.8)
+
+De sms-aanmelding kiest nu de bestaande Odido-optie om dit apparaat te onthouden.
+De integratie bewaart sessie- en apparaatcookies inclusief pad, domein, originele
+codering en absolute vervaltijd, ook na herladen of herstarten van Home Assistant.
+Nieuwe cookies worden ook bij een fout in het uitlezen van verbruik opgeslagen.
+Het interval van 30 minuten blijft gelijk.
+
+Wanneer Odido een sessie afwijst, probeert de integratie eenmaal met de opgeslagen
+gegevens en apparaatcookies opnieuw aan te melden. Dit kan een sms veroorzaken
+als Odido het apparaat niet meer vertrouwt. Bij verplichte verificatie of een
+mislukte herstelpoging stopt automatisch aanmelden, ook na een herstart, totdat
+je zelf succesvol opnieuw aanmeldt. Er worden geen verificatiecodes opgeslagen.
+Odido bepaalt de geldigheidsduur; een maandenlange sessie is niet gegarandeerd.
+Een bestaande, al verlopen sessie kan eenmalig opnieuw aanmelden vereisen om het
+apparaat te registreren.

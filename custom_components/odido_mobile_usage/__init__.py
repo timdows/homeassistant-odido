@@ -24,6 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_PASSWORD],
         usage_url=DEFAULT_USAGE_URL,
         cookies=entry.data.get(CONF_COOKIES),
+        auto_reauth_blocked=entry.data.get("auto_reauth_blocked", False),
     )
     coordinator = OdidoDataUpdateCoordinator(hass, entry, client)
     entry.runtime_data = coordinator

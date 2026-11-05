@@ -1,4 +1,5 @@
 """Local session cache; never save passwords, verification codes or page content."""
+from custom_components.odido_mobile_usage.cookie_store import valid_cookies
 import hashlib
 import json
 import os
@@ -18,7 +19,7 @@ def load_session(path, username):
     if not isinstance(data, dict) or data.get("account") != account_key(username):
         return None
     cookies = data.get("cookies")
-    if not isinstance(cookies, dict) or not cookies or not all(isinstance(k, str) and isinstance(v, str) for k, v in cookies.items()):
+    if not valid_cookies(cookies):
         return None
     return cookies
 

@@ -96,7 +96,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         client._post_form.return_value = ("https://www.odido.nl/my/dashboard", AUTH)
         await client.async_submit_code("123456")
         self.assertEqual(client._post_form.call_args.args[1]["csrf"], "fresh")
-        self.assertEqual(client.export_cookies(), {"session": "test"})
+        self.assertEqual(client.export_cookies()["items"][0]["value"], "test")
 
     async def test_rejected_code_keeps_updated_csrf(self):
         client = self.client()

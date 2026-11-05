@@ -21,6 +21,7 @@ from .api import (
     OdidoParseError,
 )
 from .const import CONF_COOKIES, CONF_USAGE_URL, DEFAULT_USAGE_URL, DOMAIN
+from .cookie_store import valid_cookies
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 cookies = json.loads(user_input[CONF_COOKIES])
-                if not isinstance(cookies, dict) or not cookies or not all(isinstance(k,str) and isinstance(v,str) for k,v in cookies.items()):
+                if not valid_cookies(cookies):
                     raise ValueError
             except (ValueError, TypeError, KeyError):
                 errors["base"] = "invalid_auth"
@@ -206,7 +207,7 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def _create_entry(self) -> ConfigFlowResult:
         assert self._client is not None
-        data = {**self._credentials, CONF_COOKIES: self._client.export_cookies()}
+        data = {**self._credentials, CONF_COOKIES: self._client.export_cookies(), "auto_reauth_blocked": False}
         if self._reauth_entry is not None:
             return self.async_update_reload_and_abort(self._reauth_entry, data=data)
         return self.async_create_entry(

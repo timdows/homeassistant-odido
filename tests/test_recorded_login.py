@@ -111,7 +111,7 @@ class RecordedFlowTests(unittest.IsolatedAsyncioTestCase):
         final = calls[1].args[1]
         self.assertEqual(final[PREFIX + "Validate"], "Validate")
         self.assertEqual(final[PREFIX + "TwoFactorAuthType"], "Sms")
-        self.assertEqual(final["IsDeviceRecognitionOpted"], "No")
+        self.assertEqual(final["IsDeviceRecognitionOpted"], "Yes")
         self.assertNotIn("pincode", final)
         self.assertNotIn("9876", str(client.__dict__))
         self.assertTrue(client._authenticated)
