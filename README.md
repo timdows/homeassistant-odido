@@ -125,3 +125,12 @@ Plaats HAR-bestanden, cookies, wachtwoorden of ingelogde HTML nooit in Git.
 
 Dit is een onofficiële integratie die alleen gegevens uitleest en niets koopt,
 geen bundels activeert en geen accountinstellingen verandert.
+
+## Afbeeldingen
+
+Vanaf versie 0.2.5 bevat `brand/` iconen en woordmerken voor lichte en donkere
+modus, inclusief hoge resolutie. Het pictogram gebruikt het officiële
+[Odido-appicoon](https://www.odido.nl/Assets/Lfwd/Favicons/apple-touch-icon-1024x1024.png).
+Het woordmerk volgt de geometrie en kleuren van het officiële
+[Odido-logo](https://www.odido.nl/Assets/Lfwd/Static/odido-logo.svg); de donkere
+variant gebruikt een wit woordmerk voor contrast. Odido behoudt de merkrechten.
