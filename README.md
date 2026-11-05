@@ -11,7 +11,7 @@ aan de echte structuur van `/my/tegoed` en `/my/verbruik-en-kosten`.
 De formulieraanmelding is door de gebruiker met een echt account uitgevoerd.
 Versie 0.2.4 is op 5 november 2026 met die opgeslagen sessie getest: bundeltegoed,
 maandverbruik, belminuten, sms en extra kosten zijn succesvol uitgelezen.
-Installatie en uitvoering in Home Assistant moeten nog worden getest.
+Installatie en uitlezen in Home Assistant zijn vervolgens succesvol uitgevoerd.
 Het openbare inlogformulier is ook via een losse HTTP-client gecontroleerd.
 De aanmelding is vervolgens aangepast aan een lokale netwerkopname van de
 werkelijke aanmelding. Deze gebruikt een viercijferige sms-code: eerst een
@@ -65,19 +65,17 @@ zijn niet met een echte opname gevalideerd.
 Voor HACS: publiceer deze repository op GitHub, voeg de repository-URL als
 aangepaste repository van categorie **Integration** toe en download de integratie.
 De documentatielinks gaan uit van `timdows/homeassistant-odido`; pas ze aan als
-de uiteindelijke repository anders heet. Er is nog niets gepubliceerd.
+de uiteindelijke repository anders heet. De repository is gepubliceerd op GitHub.
 
 De domeinnaam blijft `odido_mobile_usage`, zodat deze de bestaande integratie
 kan vervangen. Installeer niet twee repositories voor hetzelfde domein.
 
 ## Sessies
 
-Cookies zijn per account geÃ¯soleerd van Home Assistants gedeelde HTTP-sessie.
-Alleen een volledig aangemelde en met succes uitgelezen sessie wordt opgeslagen.
-Vernieuwde cookies worden na succesvol uitlezen bewaard. Een verlopen sessie
-start de Home Assistant-heraanmelding; er worden niet automatisch nieuwe
-verificatiecodes aangevraagd. Odido bepaalt de geldigheid van de sessie.
-Er is geen garantie op maandenlange geldigheid.
+Cookies zijn per account geïsoleerd van Home Assistants gedeelde HTTP-sessie.
+Volledig aangemelde sessies blijven bewaard, ook als het uitlezen van verbruik
+mislukt. Zie **Sessies behouden (0.2.8)** hieronder voor apparaatvertrouwen,
+automatisch herstel en de grenzen van de geldigheidsduur.
 
 Er worden geen individuele gesprekken, telefoonnummers, klantnummers,
 adressen, analytische identificatievelden of ruwe antwoorden als
