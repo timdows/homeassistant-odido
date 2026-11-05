@@ -194,10 +194,14 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self._client.async_get_usage()
         except OdidoInvalidAuth:
             return self.async_abort(reason="invalid_auth")
-        except OdidoConnectionError:
+        except (OdidoConnectionError, OdidoParseError) as err:
+            # Retain completed authentication so data failures do not need an OTP.
+            if self._client.export_cookies():
+                self._parse_failure("usage",err)
+                return self._create_entry()
+            if isinstance(err, OdidoParseError):
+                return self._parse_failure("usage",err)
             return self.async_abort(reason="cannot_connect")
-        except OdidoParseError as err:
-            return self._parse_failure("usage",err)
         return self._create_entry()
 
     def _create_entry(self) -> ConfigFlowResult:

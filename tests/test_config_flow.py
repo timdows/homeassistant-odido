@@ -84,6 +84,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_error_text_is_not_exposed(self):
         await self.begin()
         self.client.async_get_usage.side_effect=flow_module.OdidoParseError('private-secret-cookie')
+        self.client.export_cookies.return_value={}
         result=await self.flow.async_step_verify({'code':'9876'})
         self.assertNotIn('private-secret-cookie',str(result))
         self.assertIn('"stage": "usage"',result['description_placeholders']['details'])
@@ -139,15 +140,14 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(self.flow._client, self.client)
         self.client.export_cookies.assert_not_called()
 
-    async def test_unrecognized_usage_does_not_create_entry(self):
+    async def test_unrecognized_usage_retains_completed_session_for_retry(self):
         await self.begin()
         self.client.async_get_usage.side_effect = flow_module.OdidoParseError(
             "incomplete"
         )
         result = await self.flow.async_step_verify({"code": "123456"})
-        self.assertEqual(result['type'], 'abort')
-        self.assertEqual(result['reason'], 'unexpected_response')
-        self.client.export_cookies.assert_not_called()
+        self.assertEqual(result['type'], 'create_entry')
+        self.assertEqual(result['data']['cookies'], {'session':'fake'})
 
     async def test_reauth_replaces_existing_entry_and_usage_url(self):
         self.flow.entry = Mock()

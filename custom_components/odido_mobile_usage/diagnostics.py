@@ -2,11 +2,9 @@
 
 
 async def async_get_config_entry_diagnostics(hass, entry):
-    coordinator = entry.runtime_data
+    coordinator = getattr(entry, "runtime_data", None)
     return {
         "version": entry.version,
-        "last_update_success": coordinator.last_update_success,
-        "verification_pending": coordinator.client.debug_summary()[
-            "verification_pending"
-        ],
+        "last_update_success": coordinator.last_update_success if coordinator else False,
+        "client": coordinator.client.debug_summary() if coordinator else {},
     }
