@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from typing import Any
+import json
+import logging
 
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import (
     OdidoChallengeExpired,
@@ -18,6 +21,8 @@ from .api import (
     OdidoParseError,
 )
 from .const import CONF_COOKIES, CONF_USAGE_URL, DEFAULT_USAGE_URL, DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -31,7 +36,55 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._credentials: dict[str, Any] = {}
         self._reauth_entry: config_entries.ConfigEntry | None = None
 
-    async def async_step_user(
+    async def async_step_user(self, user_input=None):
+        if user_input is not None:
+            return await self.async_step_login(user_input)
+        return self.async_show_menu(step_id="user", menu_options=["login", "session"])
+
+    async def async_step_session(self, user_input=None):
+        """Validate an existing session before saving it; no password is needed."""
+        errors = {}
+        if user_input is not None:
+            try:
+                cookies = json.loads(user_input[CONF_COOKIES])
+                if not isinstance(cookies, dict) or not cookies or not all(isinstance(k,str) and isinstance(v,str) for k,v in cookies.items()):
+                    raise ValueError
+            except (ValueError, TypeError, KeyError):
+                errors["base"] = "invalid_auth"
+            else:
+                username = user_input[CONF_USERNAME].strip()
+                await self.async_set_unique_id(username.lower())
+                self._abort_if_unique_id_configured()
+                self._credentials = {CONF_USERNAME: username, CONF_PASSWORD: "", CONF_USAGE_URL: DEFAULT_USAGE_URL}
+                self._client = OdidoClient(async_get_clientsession(self.hass),username,"",cookies=cookies)
+                return await self._finish()
+        return self.async_show_form(step_id="session",data_schema=vol.Schema({vol.Required(CONF_USERNAME):str,vol.Required(CONF_COOKIES):TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))}), errors=errors)
+
+    def _parse_failure(self, stage, err):
+        # Error messages in this client contain only fixed local categories.
+        known = {
+            "Internet section missing": "internet_section_missing",
+            "Expected one domestic data allowance": "data_allowance_ambiguous",
+            "Monthly total row missing": "monthly_total_missing",
+            "Monthly usage fields missing or invalid": "monthly_fields_missing",
+            "Usage details missing": "usage_details_missing",
+            "Expected exactly one mobile subscription": "subscription_selection_missing_or_ambiguous",
+            "Odido did not select the mobile subscription": "subscription_not_selected",
+            "Odido login form missing": "login_form_missing",
+            "Odido verification finalization form missing": "finalization_form_missing",
+        }
+        reason="unexpected_response"
+        for message, code in known.items():
+            if str(err)==message or str(err)=="Odido usage sections incomplete: "+message:
+                reason=code
+                break
+        if str(err).startswith("Invalid Odido verification response"):
+            reason="verification_response_not_json"
+        details={"stage":stage,"reason":reason,"diagnostics":self._client.debug_summary() if self._client else {}}
+        _LOGGER.warning("Odido setup: %s",json.dumps(details))
+        return self.async_abort(reason="unexpected_response",description_placeholders={"details":json.dumps(details)})
+
+    async def async_step_login(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -56,8 +109,8 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             except OdidoConnectionError:
                 errors["base"] = "cannot_connect"
-            except OdidoParseError:
-                errors["base"] = "unexpected_response"
+            except OdidoParseError as err:
+                return self._parse_failure("login",err)
             else:
                 if needs_code:
                     return await self.async_step_verify()
@@ -68,7 +121,7 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_PASSWORD): str,
             }
         )
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return self.async_show_form(step_id="login", data_schema=schema, errors=errors)
 
     async def async_step_verify(
         self, user_input: dict[str, Any] | None = None
@@ -87,8 +140,8 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_code"
             except OdidoConnectionError:
                 errors["base"] = "cannot_connect"
-            except OdidoParseError:
-                errors["base"] = "unexpected_response"
+            except OdidoParseError as err:
+                return self._parse_failure("verification",err)
             else:
                 return await self._finish()
         return self.async_show_form(
@@ -124,8 +177,8 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             except OdidoConnectionError:
                 errors["base"] = "cannot_connect"
-            except OdidoParseError:
-                errors["base"] = "unexpected_response"
+            except OdidoParseError as err:
+                return self._parse_failure("reauth_login",err)
             else:
                 if needs_code:
                     return await self.async_step_verify()
@@ -143,8 +196,8 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="invalid_auth")
         except OdidoConnectionError:
             return self.async_abort(reason="cannot_connect")
-        except OdidoParseError:
-            return self.async_abort(reason="unexpected_response")
+        except OdidoParseError as err:
+            return self._parse_failure("usage",err)
         return self._create_entry()
 
     def _create_entry(self) -> ConfigFlowResult:

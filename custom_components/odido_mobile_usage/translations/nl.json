@@ -3,11 +3,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Koppel Mijn Odido",
-        "description": "Log in met je Mijn Odido-account. Odido kan een bevestigingscode per e-mail of sms sturen.",
-        "data": {
-          "username": "E-mailadres",
-          "password": "Wachtwoord"
+        "title": "Mijn Odido verbinden",
+        "menu_options": {
+          "login": "Aanmelden met wachtwoord",
+          "session": "Bestaande sessie gebruiken"
         }
       },
       "verify": {
@@ -23,6 +22,22 @@
         "data": {
           "password": "Wachtwoord"
         }
+      },
+      "login": {
+        "title": "Koppel Mijn Odido",
+        "description": "Log in met je Mijn Odido-account. Odido kan een bevestigingscode per e-mail of sms sturen.",
+        "data": {
+          "username": "E-mailadres",
+          "password": "Wachtwoord"
+        }
+      },
+      "session": {
+        "title": "Bestaande sessie",
+        "description": "Gebruik alleen je eigen aangemelde sessie. De sessie wordt gecontroleerd voordat deze wordt opgeslagen.",
+        "data": {
+          "username": "E-mailadres",
+          "cookies": "Sessiecookies (JSON)"
+        }
       }
     },
     "error": {
@@ -36,7 +51,7 @@
       "reauth_successful": "Odido is opnieuw gekoppeld.",
       "invalid_auth": "Odido heeft het e-mailadres of wachtwoord geweigerd.",
       "cannot_connect": "Kan geen verbinding maken met Odido.",
-      "unexpected_response": "Odido gaf een pagina terug die de integratie nog niet herkent. Zet debuglogging aan en deel de opgeschoonde diagnostiek."
+      "unexpected_response": "Odido gaf een onverwacht antwoord. Veilige foutdetails: {details}"
     }
   },
   "entity": {

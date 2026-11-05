@@ -30,6 +30,9 @@ class FlowBase:
     def async_abort(self, **kwargs):
         return dict(type="abort", **kwargs)
 
+    def async_show_menu(self, **kwargs):
+        return dict(type="menu", **kwargs)
+
     def async_update_reload_and_abort(self, entry, **kwargs):
         return dict(type="reauth_complete", **kwargs)
 
@@ -45,6 +48,7 @@ stubs = {
         "homeassistant.const",
         "homeassistant.helpers",
         "homeassistant.helpers.aiohttp_client",
+        "homeassistant.helpers.selector",
     )
 }
 stubs["homeassistant"].config_entries = stubs["homeassistant.config_entries"]
@@ -55,6 +59,9 @@ stubs["homeassistant.const"].CONF_PASSWORD = "password"
 stubs["homeassistant.helpers.aiohttp_client"].async_get_clientsession = lambda hass: (
     Mock()
 )
+stubs["homeassistant.helpers.selector"].TextSelector = lambda config: str
+stubs["homeassistant.helpers.selector"].TextSelectorConfig = lambda **kwargs: kwargs
+stubs["homeassistant.helpers.selector"].TextSelectorType = types.SimpleNamespace(PASSWORD="password")
 with patch.dict(sys.modules, stubs):
     flow_module = importlib.import_module(
         "custom_components.odido_mobile_usage.config_flow"
@@ -62,6 +69,25 @@ with patch.dict(sys.modules, stubs):
 
 
 class FlowTests(unittest.IsolatedAsyncioTestCase):
+    async def test_import_validates_existing_session_without_logging_in(self):
+        result=await self.flow.async_step_session({'username':'test@example.invalid','cookies':'{"session":"fake"}'})
+        self.assertEqual(result['type'],'create_entry')
+        self.client.async_start_login.assert_not_awaited()
+        self.client.async_get_usage.assert_awaited_once()
+        self.assertEqual(result['data']['password'],'')
+
+    async def test_invalid_import_never_reaches_server(self):
+        result=await self.flow.async_step_session({'username':'test@example.invalid','cookies':'not json'})
+        self.assertEqual(result['errors']['base'],'invalid_auth')
+        self.client.async_get_usage.assert_not_awaited()
+
+    async def test_unknown_error_text_is_not_exposed(self):
+        await self.begin()
+        self.client.async_get_usage.side_effect=flow_module.OdidoParseError('private-secret-cookie')
+        result=await self.flow.async_step_verify({'code':'9876'})
+        self.assertNotIn('private-secret-cookie',str(result))
+        self.assertIn('"stage": "usage"',result['description_placeholders']['details'])
+
     async def test_failed_finalization_aborts_instead_of_reusing_code(self):
         await self.begin()
         self.client.async_submit_code.side_effect = flow_module.OdidoChallengeExpired(
@@ -78,6 +104,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.client.async_submit_code = AsyncMock()
         self.client.async_get_usage = AsyncMock()
         self.client.export_cookies.return_value = {"session": "fake"}
+        self.client.debug_summary.return_value = {}
         self.patch = patch.object(flow_module, "OdidoClient", return_value=self.client)
         self.patch.start()
         self.addCleanup(self.patch.stop)
@@ -118,7 +145,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             "incomplete"
         )
         result = await self.flow.async_step_verify({"code": "123456"})
-        self.assertEqual(result, {"type": "abort", "reason": "unexpected_response"})
+        self.assertEqual(result['type'], 'abort')
+        self.assertEqual(result['reason'], 'unexpected_response')
         self.client.export_cookies.assert_not_called()
 
     async def test_reauth_replaces_existing_entry_and_usage_url(self):

@@ -3,11 +3,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Mijn Odido",
-        "description": "Sign in with your Mijn Odido account. Odido may send a confirmation code by email or SMS.",
-        "data": {
-          "username": "Email address",
-          "password": "Password"
+        "title": "Connect Mijn Odido",
+        "menu_options": {
+          "login": "Sign in with password",
+          "session": "Use existing session"
         }
       },
       "verify": {
@@ -23,6 +22,22 @@
         "data": {
           "password": "Password"
         }
+      },
+      "login": {
+        "title": "Connect to Mijn Odido",
+        "description": "Sign in with your Mijn Odido account. Odido may send a confirmation code by email or SMS.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      },
+      "session": {
+        "title": "Existing session",
+        "description": "Use only your own completed session. Usage is checked before saving it.",
+        "data": {
+          "username": "Email address",
+          "cookies": "Session cookies (JSON)"
+        }
       }
     },
     "error": {
@@ -36,7 +51,7 @@
       "reauth_successful": "Odido was reconnected successfully.",
       "invalid_auth": "Odido rejected the email address or password.",
       "cannot_connect": "Could not connect to Odido.",
-      "unexpected_response": "Odido returned a page the integration does not recognize yet. Enable debug logging and share the redacted diagnostics."
+      "unexpected_response": "Odido returned an unexpected response. Safe error details: {details}"
     }
   },
   "entity": {

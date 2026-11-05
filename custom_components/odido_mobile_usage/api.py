@@ -455,4 +455,4 @@ class OdidoClient:
         }
 
     def debug_summary(self):
-        return {"verification_pending": self._pending_form is not None, "usage_structure": self._usage_debug}
+        return {"verification_pending": self._pending_form is not None, "usage_structure": self._usage_debug, "last_response": self._last_response}
