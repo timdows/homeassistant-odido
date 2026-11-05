@@ -18,12 +18,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .api import OdidoClient
     from .coordinator import OdidoDataUpdateCoordinator
 
-    client = OdidoClient(
+    client_type = OdidoClient
+    auth = {"cookies": entry.data.get(CONF_COOKIES)}
+    if entry.data.get("transport") == "app":
+        from .app_api import OdidoAppClient
+        client_type = OdidoAppClient
+        auth = {"app_session": entry.data.get("app_session")}
+    client = client_type(
         async_get_clientsession(hass),
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
         usage_url=DEFAULT_USAGE_URL,
-        cookies=entry.data.get(CONF_COOKIES),
+        **auth,
         auto_reauth_blocked=entry.data.get("auto_reauth_blocked", False),
     )
     coordinator = OdidoDataUpdateCoordinator(hass, entry, client)

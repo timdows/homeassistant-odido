@@ -1,151 +1,163 @@
 # Odido Mobile Usage voor Home Assistant
 
-HACS-integratie voor mobiele abonnementen in Mijn Odido, waaronder voormalige
-Tele2-abonnementen. Gebaseerd op de website en de bestaande eigen repository
-[HACS-odido-mobile-usage](https://github.com/timdows/HACS-odido-mobile-usage).
+Onofficiële HACS-integratie voor mobiele Mijn Odido-abonnementen, waaronder
+voormalige Tele2-abonnementen. Leest bundeltegoed en verbruik; wijzigt geen
+abonnementen en activeert geen bundels.
 
-## Status
+## Installatie en overstappen
 
-De ingelogde pagina's zijn op 5 november 2026 onderzocht. De parser is aangepast
-aan de echte structuur van `/my/tegoed` en `/my/verbruik-en-kosten`.
-De formulieraanmelding is door de gebruiker met een echt account uitgevoerd.
-Versie 0.2.4 is op 5 november 2026 met die opgeslagen sessie getest: bundeltegoed,
-maandverbruik, belminuten, sms en extra kosten zijn succesvol uitgelezen.
-Installatie en uitlezen in Home Assistant zijn vervolgens succesvol uitgevoerd.
-Het openbare inlogformulier is ook via een losse HTTP-client gecontroleerd.
-De aanmelding is vervolgens aangepast aan een lokale netwerkopname van de
-werkelijke aanmelding. Deze gebruikt een viercijferige sms-code: eerst een
-AJAX-controle met `pincode` en daarna een aparte POST om de sessie af te ronden.
-Ook de inlogknop wordt expliciet meegestuurd. De echte formulieren en de
-succesvolle landingspagina worden correct herkend bij offline controle.
-De opname bevat geen cookies en geen verbruikspagina's; hiermee is geen nieuwe
-live sessie gestart. De originele opname, wachtwoorden en codes staan niet in
-de repository. Alleen formulierstructuren met volledig vervangen veldwaarden
-zijn opgenomen als tests.
+1. Voeg in HACS `https://github.com/timdows/homeassistant-odido` toe als aangepaste repository van categorie **Integratie**.
+2. Download **Odido Mobile Usage** en herstart Home Assistant.
+3. Ga naar **Instellingen → Apparaten & diensten → Integratie toevoegen → Odido Mobile Usage**.
+4. Kies **App-route** en voer je Mijn Odido-gegevens en de gevraagde viercijferige sms-code in.
 
-Versie 0.2.2 stuurt voor de sms-controle dezelfde JSON-`Accept`-header en
-UTF-8-formulierinhoud als de opgenomen browseraanvraag. JSON met een Unicode-BOM
-wordt ook herkend. Bij een onverwacht antwoord meldt de lokale test alleen
-HTTP-status, antwoordformaat, paginacategorie, omleiding en lengte; geen inhoud
-of geheime veldwaarden. De volledige live aanmelding moet nog slagen voordat
-de integratie als werkend kan worden beschouwd.
+Bij een bestaande websiteconfiguratie kies je bij die integratie
+**Herconfigureren** om over te stappen naar de app-route. Dit behoudt de
+configuratie en sensor-ID's. Een update alleen zet de bestaande websiteflow
+niet automatisch om. De lokale testsessie wordt niet automatisch naar Home
+Assistant gekopieerd; de eerste app-aanmelding daar kan opnieuw MFA vragen.
+Installeer één repository voor het domein `odido_mobile_usage`; verwijder een
+oude HACS-bron voor hetzelfde domein voordat je deze gebruikt.
 
-Als Odido na aanmelden eerst het abonnementsoverzicht toont, laadt de client
-het abonnementenblok en selecteert het enige mobiele abonnement met het
-formulier van de website. Bij meerdere mobiele abonnementen stopt de client;
-een expliciete nummerkeuze moet dan nog worden toegevoegd.
+Handmatige installatie kan ook: kopieer `custom_components/odido_mobile_usage`
+naar `config/custom_components/` en herstart Home Assistant.
 
-## Sensoren
+## Hoe de officiële app aanmeldt
 
-| Sensor | Bron |
+De Android-APK Odido 9.10.0 is statisch onderzocht. De knop **Gebruiker toevoegen**
+opent een browservenster. De app gebruikt dus een website voor de aanmelding,
+waarna gegevens via de app-API worden opgehaald:
+
+1. Open `https://www.odido.nl/login?returnSystem=app&nav=off&token=…`.
+   De parameter `token` bevat de met Fernet versleutelde openbare client-ID
+   uit de APK. Dezelfde waarde blijft behouden tijdens de formulieraanmelding.
+2. Doorloop het wachtwoordformulier, de AJAX-controle van de sms-code en de
+   afsluitende formulier-POST. De code wordt niet als sessie opgeslagen.
+3. Ontvang de terugkeer op `/loginappresult?token=…`. De integratie ontsleutelt
+   deze, controleert account en tijdclaims en haalt de autorisatiecode uit de
+   geneste versleutelde waarde. Deze code is tijdelijk en wordt niet bewaard.
+4. De client probeert de ontvangen waarde op de accountresource. Bij een
+   vereiste uitwisseling volgt eenmaal `POST https://capi.odido.nl/createtoken`
+   met JSON `AuthorizationCode`, Basic-clientauthenticatie en de header
+   `grant_type: authorization_code`. De Android-app leest het uiteindelijke
+   token uit de **AccessToken-responseheader**. HTTP **202** is hierbij geldig;
+   de antwoordbody hoeft geen JSON-object te bevatten. Een ErrorCode-header
+   wordt gecontroleerd. Een verbruikte code wordt niet opnieuw aangeboden.
+5. Bewaar het bevestigde app-token en gebruik dit als bearer voor het uitlezen.
+
+De client-ID en Fernet-sleutel zijn publieke appconstanten; ze vervangen
+geen accountaanmelding. Het oude rechtstreekse CAPI-wachtwoordendpoint gaf
+tijdens onderzoek HTTP 503 en wordt niet gebruikt. De Android-app hoeft niet
+op Home Assistant geïnstalleerd of uitgevoerd te worden.
+
+## Verbruik ophalen via de app-API
+
+De API biedt resource-URL's aan. De integratie volgt deze in plaats van
+klantnummers of abonnementspaden zelf samen te stellen. De Accept-header is
+`application/json,application/vnd.capi.tmobile.nl.<label>.v<versie>+json`,
+met het label in kleine letters.
+
+| Stap | Resource en versie | Gegevens |
+| --- | --- | --- |
+| Account | Account v1 met `resourcelabel=LinkedSubscriptions` | Verwijzing naar gekoppelde abonnementen |
+| Gekoppelde abonnementen | LinkedSubscriptions v1 | Eén actief mobiel abonnement selecteren |
+| Abonnement | Subscription v2 | Beschikbare verbruiksresources |
+| Bundelstatus | PostpaidBundleStatus v5 | Belbundel en extra kosten |
+| Databundel | PostpaidDataBundleStatus v9 | Limiet, gebruikt en resterend |
+| Maandoverzicht | PostpaidBundleStatusDetails v4 | Geaggregeerde belduur, sms en maanddata |
+
+`account/current` kan HTTP 302 naar een accountpad geven. Alleen GET-omleidingen
+naar HTTPS op dezelfde CAPI-host worden gevolgd, met maximaal vijf hops.
+Het bearer-token wordt niet naar een andere host doorgestuurd. Subscription
+v1 gaf bij het onderzochte voormalige Tele2-account HTTP 403; v2 werkt wel.
+Een 403 op een resource verwijdert het opgeslagen token niet. Een 401 betekent
+dat de sessie is afgewezen en heraanmelding nodig is.
+
+De parser gebruikt de expliciete bundelpresentatie om ruwe datatellers te
+kalibreren: in het waargenomen antwoord is 10.240.000 KB gelijk aan 10.000 MB,
+ofwel 10 GB. Hij controleert dat gebruikt plus resterend overeenkomt met de
+limiet. Belduur in seconden wordt omgerekend naar minuten; sms wordt geteld.
+Individuele gespreksregels worden uitsluitend tijdens verwerking geaggregeerd.
+Meerdere mobiele abonnementen of databundels worden nog niet ondersteund;
+de integratie meldt een fout in plaats van een abonnement of overlap te raden.
+
+## Implementatie en sessiebehoud
+
+| Bestand | Verantwoordelijkheid |
 | --- | --- |
-| Databundel, resterende data, bundelverbruik en percentage | Tegoed |
-| Dataverbruik maandoverzicht | Verbruik & Kosten |
-| Verbruikte belminuten, inclusief seconden als fractie van een minuut | Verbruik & Kosten |
-| Belbundel (Onbeperkt wanneer expliciet vermeld) | Tegoed |
-| Sms-verbruik en extra kosten deze maand | Verbruik & Kosten |
+| `app_const.py` | Publieke constanten uit de APK |
+| `app_api.py` | Browserbootstrap, callbackcontrole, tokenuitwisseling, CAPI en normalisatie |
+| `api.py` | Bestaande formulier- en sms-aanmelding; gedeeld met de websiteflow |
+| `config_flow.py` | App-keuze, verificatie, heraanmelding en overstappen |
+| `__init__.py` | Client kiezen en opgeslagen sessie herstellen |
+| `coordinator.py` | Iedere 30 minuten uitlezen en appsessie bewaren |
+| `sensor.py` | Genormaliseerde meetwaarden met bestaande sensor-ID's |
 
-De tegoedpagina en het maandoverzicht kunnen op verschillende momenten zijn
-bijgewerkt. Bundelverbruik wordt berekend als bundel minus resterend; het
-maandoverzicht wordt afzonderlijk getoond. 1.000 MB is hier 1 GB, overeenkomstig
-de providerweergave. `26:41 min` betekent 26 minuten en 41 seconden.
-Meerdere gelijktijdige databundels worden nog niet ondersteund: de parser
-meldt een fout in plaats van mogelijk overlappende bundels op te tellen.
+De appsessie staat in `app_session` van de Home Assistant-configuratie.
+Browsercookies worden niet als app-credentials bewaard. Een geslaagde
+app-aanmelding blijft behouden als daarna een parser- of resourcefout optreedt.
+Achtergrondverversingen sturen geen nieuwe sms-verzoeken. Er is geen bevestigd
+refresh-tokenendpoint; Odido bepaalt de geldigheidsduur. Maandenlange of
+onbeperkte geldigheid kan niet worden gegarandeerd. Na echte tokenafwijzing
+moet je via Home Assistant opnieuw aanmelden.
 
-## Installatie
+De websiteflow blijft beschikbaar voor bestaande configuraties. Die bewaart
+accountgebonden sessie- en apparaatcookies en probeert na sessieafwijzing
+hoogstens eenmaal automatisch herstel. Verplichte MFA of mislukt herstel
+blokkeert verdere automatische aanmeldpogingen, ook na een herstart, tot een
+succesvolle handmatige aanmelding. Dit gedrag geldt afzonderlijk van de app-route.
 
-1. Kopieer `custom_components/odido_mobile_usage` naar `config/custom_components`.
-2. Herstart Home Assistant.
-3. Voeg **Odido Mobile Usage** toe via Apparaten & diensten.
-4. Vul je Mijn Odido-gebruikersnaam, wachtwoord en viercijferige sms-code in.
+Home Assistant kan de ingevoerde inloggegevens in de integratieconfiguratie
+bewaren. Behandel configuratie en back-ups als vertrouwelijk. Sms-codes,
+callbackcodes, ruwe API-antwoorden en individuele gesprekken worden niet
+opgeslagen of als sensorattributen gepubliceerd. Diagnostiek bevat alleen
+veilige structurele gegevens, zonder tokens of account-URL's.
 
-De vastgestelde flow is die voor sms-verificatie. Andere verificatiemethoden
-zijn niet met een echte opname gevalideerd.
+## Sensoren en beperkingen
 
-Voor HACS: publiceer deze repository op GitHub, voeg de repository-URL als
-aangepaste repository van categorie **Integration** toe en download de integratie.
-De documentatielinks gaan uit van `timdows/homeassistant-odido`; pas ze aan als
-de uiteindelijke repository anders heet. De repository is gepubliceerd op GitHub.
+- Databundel, bundelverbruik, resterende data en percentage.
+- Afzonderlijk dataverbruik van het maandoverzicht.
+- Verbruikte belminuten, met seconden als fractie van een minuut, en belbundel.
+- Sms-verbruik en extra kosten deze maand.
 
-De domeinnaam blijft `odido_mobile_usage`, zodat deze de bestaande integratie
-kan vervangen. Installeer niet twee repositories voor hetzelfde domein.
+Bundelstatus en maandoverzicht kunnen op verschillende momenten zijn bijgewerkt.
+Niet-nulkosten blijven onbekend zolang de schaal van die API-waarde niet is
+gevalideerd. Nulkosten worden alleen getoond wanneer de API expliciet nul meldt.
 
-## Sessies
-
-Cookies zijn per account ge�soleerd van Home Assistants gedeelde HTTP-sessie.
-Volledig aangemelde sessies blijven bewaard, ook als het uitlezen van verbruik
-mislukt. Zie **Sessies behouden (0.2.8)** hieronder voor apparaatvertrouwen,
-automatisch herstel en de grenzen van de geldigheidsduur.
-
-Er worden geen individuele gesprekken, telefoonnummers, klantnummers,
-adressen, analytische identificatievelden of ruwe antwoorden als
-sensorattributen gepubliceerd. Diagnostiek bevat geen verbruik of geheimen.
-
-## Tests
-
-Python 3.12 of hoger:
+## Testen en onderzoek
 
 ```powershell
-python -m pip install aiohttp voluptuous
+python -m pip install aiohttp voluptuous cryptography
 python -m unittest discover -s tests -v
+python tools/app_check.py
 ```
 
-Tests gebruiken synthetische gegevens en nagebootste websitesessies.
-Voor een echte lokale aanmeldtest:
+De app-route is op 5 november 2026 met een voormalig Tele2-account getest:
+aanmelding met sms, bundel- en maandverbruik ophalen en tweemaal uitlezen met
+een nieuw clientobject en hetzelfde bewaarde token zijn geslaagd. Langdurige
+servergeldigheid volgt niet uit deze test. De regressietests gebruiken
+synthetische tokens en antwoorden, inclusief headeruitwisseling, veilige
+omleidingen, sessiebehoud en aggregatie zonder privégespreksgegevens.
 
-```powershell
-python tools/local_check.py
-```
+`tools/app_check.py` vraagt wachtwoord en code verborgen. De bevestigde sessie
+staat accountgebonden in `debug/app-session.json`, ook na een uitleesfout.
+Een volgende poging gebruikt eerst dat token, zonder nieuwe aanmelding.
+Een voltooide browserbootstrap kan tijdelijk in `debug/app-bootstrap.json`
+worden bewaard om een mislukte app-overdracht opnieuw te proberen; na verkrijging
+van het app-token wordt die cache verwijderd. Deze bestanden bevatten geen
+wachtwoord of sms-code, maar geven wel toegang tot de sessie: houd ze privé.
+Verwijder de cachebestanden als je lokaal opnieuw wilt beginnen.
 
-Deze test bewaart vanaf versie 0.2.3 de cookies van een volledig aangemelde
-sessie in `debug/session.json`. Dit bestand is uitgesloten van Git. Het bevat
-geen wachtwoord of sms-code, maar geeft wel toegang tot de sessie: houd het privé.
-Bij de volgende run vraagt de test je gebruikersnaam en probeert eerst de
-opgeslagen sessie. Alleen wanneer Odido de sessie afwijst, wordt opnieuw om
-je wachtwoord en verificatiecode gevraagd. Een uitleesfout bewaart de sessie,
-zodat we de parser verder kunnen onderzoeken zonder nieuwe aanmelding.
-Om de sessie lokaal te vergeten, verwijder je `debug/session.json`.
-
-De vorige versies bewaarden geen lokale testsessie; na de update is daarom
-nog één nieuwe aanmelding nodig. Home Assistant gebruikt zijn eigen opgeslagen
-integratiesessie; de lokale testcache wordt daar niet automatisch geïmporteerd.
-
-De client laadt de formulieren `BundleUsage.GetStatus` op `/my/tegoed` en
-`SimUsageDetail.GetUsageTotals` op `/my/verbruik-en-kosten`. De gewone GET-pagina's
-bevatten alleen de nog lege verbruiksblokken. Kolomnamen van het maandoverzicht
-worden uit `data-table-header` gelezen; ze staan niet als tekst in de cellen.
-De parser meldt welk onderdeel ontbreekt, met veilige structurele diagnostiek.
-
-Op deze Windows-computer kun je ook `tools/local_check.ps1` starten. Die vindt
-de meegeleverde Python, maakt een lokale `.venv` en installeert de benodigde
-pakketten voordat de test begint.
-Plaats HAR-bestanden, cookies, wachtwoorden of ingelogde HTML nooit in Git.
-
-Dit is een onofficiële integratie die alleen gegevens uitleest en niets koopt,
-geen bundels activeert en geen accountinstellingen verandert.
+Voor de oudere websiteflow bestaat `python tools/local_check.py`, met de
+aparte cache `debug/session.json`. De APK, analysebestanden en `debug/` zijn
+uitgesloten van Git. Commit nooit HAR-bestanden, cookies, tokens, wachtwoorden
+of ingelogde HTML. Verwerk nieuwe API-inzichten in synthetische fixtures en
+controleer daarna met een bestaande sessie voordat je opnieuw MFA vraagt.
 
 ## Afbeeldingen
 
-Vanaf versie 0.2.5 bevat `brand/` iconen en woordmerken voor lichte en donkere
-modus, inclusief hoge resolutie. Het pictogram gebruikt het officiële
-[Odido-appicoon](https://www.odido.nl/Assets/Lfwd/Favicons/apple-touch-icon-1024x1024.png).
-Het woordmerk volgt de geometrie en kleuren van het officiële
-[Odido-logo](https://www.odido.nl/Assets/Lfwd/Static/odido-logo.svg); de donkere
-variant gebruikt een wit woordmerk voor contrast. Odido behoudt de merkrechten.
-
-### Sessies behouden (0.2.8)
-
-De sms-aanmelding kiest nu de bestaande Odido-optie om dit apparaat te onthouden.
-De integratie bewaart sessie- en apparaatcookies inclusief pad, domein, originele
-codering en absolute vervaltijd, ook na herladen of herstarten van Home Assistant.
-Nieuwe cookies worden ook bij een fout in het uitlezen van verbruik opgeslagen.
-Het interval van 30 minuten blijft gelijk.
-
-Wanneer Odido een sessie afwijst, probeert de integratie eenmaal met de opgeslagen
-gegevens en apparaatcookies opnieuw aan te melden. Dit kan een sms veroorzaken
-als Odido het apparaat niet meer vertrouwt. Bij verplichte verificatie of een
-mislukte herstelpoging stopt automatisch aanmelden, ook na een herstart, totdat
-je zelf succesvol opnieuw aanmeldt. Er worden geen verificatiecodes opgeslagen.
-Odido bepaalt de geldigheidsduur; een maandenlange sessie is niet gegarandeerd.
-Een bestaande, al verlopen sessie kan eenmalig opnieuw aanmelden vereisen om het
-apparaat te registreren.
+`custom_components/odido_mobile_usage/brand/` bevat pictogrammen en woordmerken
+voor lichte en donkere modus, inclusief hoge resolutie. Bron:
+[officieel appicoon](https://www.odido.nl/Assets/Lfwd/Favicons/apple-touch-icon-1024x1024.png)
+en [officieel woordmerk](https://www.odido.nl/Assets/Lfwd/Static/odido-logo.svg).
+Odido behoudt de merkrechten. Deze integratie is niet verbonden aan Odido.

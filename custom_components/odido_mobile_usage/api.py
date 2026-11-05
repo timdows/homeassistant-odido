@@ -245,14 +245,19 @@ class OdidoClient:
     async def _post_form(self, url, data, *, ajax=False, expect_json=False):
         return await self._request("POST", url, data, ajax=ajax, expect_json=expect_json)
 
+    login_url = LOGIN_URL
+
+    def _login_complete(self, url, html):
+        return _looks_logged_in(url, html)
+
     async def async_start_login(self, *, preserve_cookies=False):
         self._pending_form = self._pending_url = None
         self._finalize_form = None
         self._authenticated = False
         if not preserve_cookies:
             self._cookies.clear()
-        url, html = await self._get_text(LOGIN_URL)
-        if preserve_cookies and _looks_logged_in(url, html):
+        url, html = await self._get_text(self.login_url)
+        if preserve_cookies and self._login_complete(url, html):
             self._authenticated = True
             return False
         form = _find_login_form(parse_forms(html))
@@ -303,7 +308,7 @@ class OdidoClient:
                         "Odido verification finalization form missing"
                     )
             return True
-        if not _looks_logged_in(url, html):
+        if not self._login_complete(url, html):
             raise OdidoInvalidAuth("Odido rejected the login")
         self._authenticated = True
         return False
@@ -351,7 +356,7 @@ class OdidoClient:
                 raise OdidoChallengeExpired(
                     "Odido session finalization failed; restart login"
                 ) from None
-            if not _looks_logged_in(url, html):
+            if not self._login_complete(url, html):
                 raise OdidoChallengeExpired(
                     "Odido session finalization failed; restart login"
                 )
@@ -364,7 +369,7 @@ class OdidoClient:
         if new_form:
             self._pending_form, self._pending_url = new_form, url
             raise OdidoInvalidAuth("Odido rejected the verification code")
-        if not _looks_logged_in(url, html):
+        if not self._login_complete(url, html):
             self._pending_form = self._pending_url = None
             raise OdidoInvalidAuth("Verification session expired")
         self._pending_form = self._pending_url = None
@@ -441,7 +446,7 @@ class OdidoClient:
 
     async def _select_only_subscription(self, url, html):
         """Follow the account page's own selector; never guess among accounts."""
-        if not _looks_logged_in(url, html):
+        if not self._login_complete(url, html):
             raise OdidoInvalidAuth("Odido session expired")
         forms = parse_forms(html)
         initial = next(

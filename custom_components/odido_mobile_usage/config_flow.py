@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
 import json
 import logging
+from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .api import (
     OdidoChallengeExpired,
@@ -35,12 +39,29 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         super().__init__()
         self._client: OdidoClient | None = None
         self._credentials: dict[str, Any] = {}
+        self._transport = "website"
         self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
             return await self.async_step_login(user_input)
-        return self.async_show_menu(step_id="user", menu_options=["login", "session"])
+        return self.async_show_menu(step_id="user", menu_options=["app", "login", "session"])
+
+    async def async_step_app(self, user_input=None):
+        """Use the app browser login instead of the retired direct app login."""
+        self._transport = "app"
+        return await self.async_step_login(user_input)
+
+    def _new_client(self, session, username, password, **kwargs):
+        if self._transport == "app":
+            from .app_api import OdidoAppClient
+            return OdidoAppClient(session, username, password, **kwargs)
+        return OdidoClient(session, username, password, **kwargs)
+
+    def _has_completed_session(self):
+        if self._transport == "app":
+            return bool(self._client.export_session())
+        return bool(self._client.export_cookies())
 
     async def async_step_session(self, user_input=None):
         """Validate an existing session before saving it; no password is needed."""
@@ -98,7 +119,7 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_PASSWORD: user_input[CONF_PASSWORD],
                 CONF_USAGE_URL: DEFAULT_USAGE_URL,
             }
-            self._client = OdidoClient(
+            self._client = self._new_client(
                 session,
                 username=self._credentials[CONF_USERNAME],
                 password=self._credentials[CONF_PASSWORD],
@@ -151,8 +172,16 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(self, user_input=None):
+        """Switch an existing website entry to app auth without changing IDs."""
+        self._reauth_entry = self._get_reconfigure_entry()
+        self._credentials = dict(self._reauth_entry.data)
+        self._transport = "app"
+        return await self.async_step_reauth_confirm(user_input)
+
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Start reauthentication after Odido expires the session."""
+        self._transport = entry_data.get("transport", "website")
         self._reauth_entry = self._get_reauth_entry()
         self._credentials = dict(entry_data)
         self._credentials[CONF_USAGE_URL] = DEFAULT_USAGE_URL
@@ -166,7 +195,7 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._credentials[CONF_PASSWORD] = user_input[CONF_PASSWORD]
             session = async_get_clientsession(self.hass)
-            self._client = OdidoClient(
+            self._client = self._new_client(
                 session,
                 self._credentials[CONF_USERNAME],
                 self._credentials[CONF_PASSWORD],
@@ -197,7 +226,7 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="invalid_auth")
         except (OdidoConnectionError, OdidoParseError) as err:
             # Retain completed authentication so data failures do not need an OTP.
-            if self._client.export_cookies():
+            if self._has_completed_session():
                 self._parse_failure("usage",err)
                 return self._create_entry()
             if isinstance(err, OdidoParseError):
@@ -207,7 +236,13 @@ class OdidoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def _create_entry(self) -> ConfigFlowResult:
         assert self._client is not None
-        data = {**self._credentials, CONF_COOKIES: self._client.export_cookies(), "auto_reauth_blocked": False}
+        data = {**self._credentials, "transport": self._transport, "auto_reauth_blocked": False}
+        if self._transport == "app":
+            data["app_session"] = self._client.export_session()
+            data.pop(CONF_COOKIES, None)
+        else:
+            data[CONF_COOKIES] = self._client.export_cookies()
+            data.pop("app_session", None)
         if self._reauth_entry is not None:
             return self.async_update_reload_and_abort(self._reauth_entry, data=data)
         return self.async_create_entry(

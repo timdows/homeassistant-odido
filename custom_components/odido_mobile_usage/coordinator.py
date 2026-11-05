@@ -37,8 +37,12 @@ class OdidoDataUpdateCoordinator(DataUpdateCoordinator[UsageData]):
         finally:
             data = dict(self.entry.data)
             data["auto_reauth_blocked"] = self.client.auto_reauth_blocked
-            cookies = self.client.export_cookies()
-            if cookies:
-                data[CONF_COOKIES] = cookies
+            if data.get("transport") == "app":
+                data["app_session"] = self.client.export_session()
+                data.pop(CONF_COOKIES, None)
+            else:
+                cookies = self.client.export_cookies()
+                if cookies:
+                    data[CONF_COOKIES] = cookies
             if data != self.entry.data:
                 self.hass.config_entries.async_update_entry(self.entry, data=data)

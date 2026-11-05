@@ -6,7 +6,8 @@
         "title": "Mijn Odido verbinden",
         "menu_options": {
           "login": "Aanmelden met wachtwoord",
-          "session": "Bestaande sessie gebruiken"
+          "session": "Bestaande sessie gebruiken",
+          "app": "App-route (browseraanmelding)"
         }
       },
       "verify": {

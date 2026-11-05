@@ -12,6 +12,8 @@
   "loggers": [
     "custom_components.odido_mobile_usage"
   ],
-  "requirements": [],
-  "version": "0.2.8"
+  "requirements": [
+    "cryptography>=44.0.0"
+  ],
+  "version": "0.3.0"
 }

@@ -8,3 +8,6 @@ debug/
 *.har
 *storage-state*.json
 cookies.json
+
+# Local application package and analysis/session files.
+/apk/

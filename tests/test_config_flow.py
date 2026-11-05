@@ -170,3 +170,24 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             await self.flow.async_step_verify({"code": "123456"}),
             {"type": "abort", "reason": "invalid_auth"},
         )
+    async def test_app_route_persists_only_verified_app_session(self):
+        from custom_components.odido_mobile_usage import app_api
+        self.client.export_session.return_value = {'version':1, 'token':'fake-app-token'}
+        with patch.object(app_api, 'OdidoAppClient', return_value=self.client):
+            result = await self.flow.async_step_app({'username':'test@example.invalid','password':'fake-password'})
+            if result.get('step_id') == 'verify':
+                result = await self.flow.async_step_verify({'code':'1234'})
+        self.assertEqual(result['type'], 'create_entry')
+        self.assertEqual(result['data']['transport'], 'app')
+        self.assertEqual(result['data']['app_session'], {'version':1,'token':'fake-app-token'})
+        self.assertNotIn('cookies', result['data'])
+
+    async def test_app_parse_failure_retains_completed_session(self):
+        self.flow._transport = 'app'
+        self.flow._client = self.client
+        self.flow._credentials = {'username':'test@example.invalid','password':'fake-password'}
+        self.client.export_session.return_value = {'version':1,'token':'fake-app-token'}
+        self.client.async_get_usage.side_effect = flow_module.OdidoParseError('unknown app fields')
+        result = await self.flow._finish()
+        self.assertEqual(result['type'], 'create_entry')
+        self.assertEqual(result['data']['app_session']['token'], 'fake-app-token')

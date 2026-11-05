@@ -6,7 +6,8 @@
         "title": "Connect Mijn Odido",
         "menu_options": {
           "login": "Sign in with password",
-          "session": "Use existing session"
+          "session": "Use existing session",
+          "app": "App route (browser sign-in)"
         }
       },
       "verify": {
