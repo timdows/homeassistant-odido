@@ -1,0 +1,73 @@
+{
+  "title": "Odido Mobiel Verbruik",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Koppel Mijn Odido",
+        "description": "Log in met je Mijn Odido-account. Odido kan een bevestigingscode per e-mail of sms sturen.",
+        "data": {
+          "username": "E-mailadres",
+          "password": "Wachtwoord"
+        }
+      },
+      "verify": {
+        "title": "Vul de bevestigingscode in",
+        "description": "Vul de code in die Odido zojuist heeft gestuurd.",
+        "data": {
+          "code": "Bevestigingscode"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Koppel Mijn Odido opnieuw",
+        "description": "Je Odido-sessie is verlopen. Vul je wachtwoord in om opnieuw in te loggen.",
+        "data": {
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met Odido.",
+      "invalid_auth": "Odido heeft het e-mailadres of wachtwoord geweigerd.",
+      "invalid_code": "Odido heeft de bevestigingscode geweigerd.",
+      "unexpected_response": "Odido gaf een pagina terug die de integratie nog niet herkent. Zet debuglogging aan en deel de opgeschoonde diagnostiek."
+    },
+    "abort": {
+      "already_configured": "Dit Odido-account is al ingesteld.",
+      "reauth_successful": "Odido is opnieuw gekoppeld.",
+      "invalid_auth": "Odido heeft het e-mailadres of wachtwoord geweigerd.",
+      "cannot_connect": "Kan geen verbinding maken met Odido.",
+      "unexpected_response": "Odido gaf een pagina terug die de integratie nog niet herkent. Zet debuglogging aan en deel de opgeschoonde diagnostiek."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "used": {
+        "name": "Dataverbruik uit bundeltegoed"
+      },
+      "remaining": {
+        "name": "Resterende data"
+      },
+      "limit": {
+        "name": "Databundel"
+      },
+      "percentage": {
+        "name": "Databundel verbruikt"
+      },
+      "reported_data_used": {
+        "name": "Dataverbruik maandoverzicht"
+      },
+      "voice_used": {
+        "name": "Belminuten verbruikt"
+      },
+      "voice_allowance": {
+        "name": "Belbundel"
+      },
+      "sms_used": {
+        "name": "Sms verbruikt"
+      },
+      "extra_costs": {
+        "name": "Extra kosten deze maand"
+      }
+    }
+  }
+}

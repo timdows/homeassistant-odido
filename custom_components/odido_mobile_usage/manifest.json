@@ -1,0 +1,17 @@
+{
+  "domain": "odido_mobile_usage",
+  "name": "Odido Mobile Usage",
+  "codeowners": [
+    "@timdows"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/timdows/homeassistant-odido",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/timdows/homeassistant-odido/issues",
+  "loggers": [
+    "custom_components.odido_mobile_usage"
+  ],
+  "requirements": [],
+  "version": "0.2.4"
+}

@@ -1,0 +1,73 @@
+{
+  "title": "Odido Mobile Usage",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Mijn Odido",
+        "description": "Sign in with your Mijn Odido account. Odido may send a confirmation code by email or SMS.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      },
+      "verify": {
+        "title": "Enter confirmation code",
+        "description": "Enter the code that Odido just sent you.",
+        "data": {
+          "code": "Confirmation code"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Mijn Odido",
+        "description": "Your Odido session expired. Enter your password to sign in again.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to Odido.",
+      "invalid_auth": "Odido rejected the email address or password.",
+      "invalid_code": "Odido rejected the confirmation code.",
+      "unexpected_response": "Odido returned a page the integration does not recognize yet. Enable debug logging and share the redacted diagnostics."
+    },
+    "abort": {
+      "already_configured": "This Odido account is already configured.",
+      "reauth_successful": "Odido was reconnected successfully.",
+      "invalid_auth": "Odido rejected the email address or password.",
+      "cannot_connect": "Could not connect to Odido.",
+      "unexpected_response": "Odido returned a page the integration does not recognize yet. Enable debug logging and share the redacted diagnostics."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "used": {
+        "name": "Data used from allowance"
+      },
+      "remaining": {
+        "name": "Data remaining"
+      },
+      "limit": {
+        "name": "Data allowance"
+      },
+      "percentage": {
+        "name": "Data allowance used"
+      },
+      "reported_data_used": {
+        "name": "Data used in monthly overview"
+      },
+      "voice_used": {
+        "name": "Voice minutes used"
+      },
+      "voice_allowance": {
+        "name": "Voice allowance"
+      },
+      "sms_used": {
+        "name": "SMS used"
+      },
+      "extra_costs": {
+        "name": "Extra costs this month"
+      }
+    }
+  }
+}
