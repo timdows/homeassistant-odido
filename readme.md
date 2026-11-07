@@ -4,17 +4,27 @@ Onofficiële HACS-integratie voor mobiele Mijn Odido-abonnementen, waaronder
 voormalige Tele2-abonnementen. Leest bundeltegoed en verbruik; wijzigt geen
 abonnementen en activeert geen bundels.
 
+## Alleen app-route vanaf 0.3.1
+
+De oude website-verbruiksclient, cookie-import en automatische websiteheraanmelding
+zijn verwijderd. Nieuwe aanmelding, herconfiguratie en reparatie van een bestaande
+koppeling gebruiken altijd `OdidoAppClient`. Bestaande websitecookies worden nooit
+gebruikt voor verbruik of automatisch voor aanmelden. Zonder bevestigd app-token
+vraagt de bestaande koppeling om eenmalige app-aanmelding; sensor-ID's blijven gelijk.
+De officiële app-browserbootstrap voor wachtwoord en sms blijft noodzakelijk.
+Er worden geen HTML-verbruikspagina's meer opgevraagd.
+
 ## Installatie en overstappen
 
 1. Voeg in HACS `https://github.com/timdows/homeassistant-odido` toe als aangepaste repository van categorie **Integratie**.
 2. Download **Odido Mobile Usage** en herstart Home Assistant.
 3. Ga naar **Instellingen → Apparaten & diensten → Integratie toevoegen → Odido Mobile Usage**.
-4. Kies **App-route** en voer je Mijn Odido-gegevens en de gevraagde viercijferige sms-code in.
+4. Voer in **Odido app-aanmelding** je Mijn Odido-gegevens en de gevraagde viercijferige sms-code in.
 
 Bij een bestaande websiteconfiguratie kies je bij die integratie
 **Herconfigureren** om over te stappen naar de app-route. Dit behoudt de
-configuratie en sensor-ID's. Een update alleen zet de bestaande websiteflow
-niet automatisch om. De lokale testsessie wordt niet automatisch naar Home
+configuratie en sensor-ID's. Een update schakelt de client automatisch om; zonder app-token is eenmalig
+aanmelden nodig. De lokale testsessie wordt niet automatisch naar Home
 Assistant gekopieerd; de eerste app-aanmelding daar kan opnieuw MFA vragen.
 Installeer één repository voor het domein `odido_mobile_usage`; verwijder een
 oude HACS-bron voor hetzelfde domein voordat je deze gebruikt.
@@ -101,12 +111,6 @@ refresh-tokenendpoint; Odido bepaalt de geldigheidsduur. Maandenlange of
 onbeperkte geldigheid kan niet worden gegarandeerd. Na echte tokenafwijzing
 moet je via Home Assistant opnieuw aanmelden.
 
-De websiteflow blijft beschikbaar voor bestaande configuraties. Die bewaart
-accountgebonden sessie- en apparaatcookies en probeert na sessieafwijzing
-hoogstens eenmaal automatisch herstel. Verplichte MFA of mislukt herstel
-blokkeert verdere automatische aanmeldpogingen, ook na een herstart, tot een
-succesvolle handmatige aanmelding. Dit gedrag geldt afzonderlijk van de app-route.
-
 Home Assistant kan de ingevoerde inloggegevens in de integratieconfiguratie
 bewaren. Behandel configuratie en back-ups als vertrouwelijk. Sms-codes,
 callbackcodes, ruwe API-antwoorden en individuele gesprekken worden niet
@@ -148,8 +152,8 @@ van het app-token wordt die cache verwijderd. Deze bestanden bevatten geen
 wachtwoord of sms-code, maar geven wel toegang tot de sessie: houd ze privé.
 Verwijder de cachebestanden als je lokaal opnieuw wilt beginnen.
 
-Voor de oudere websiteflow bestaat `python tools/local_check.py`, met de
-aparte cache `debug/session.json`. De APK, analysebestanden en `debug/` zijn
+De oude `tools/local_check.py` en websitecachetools zijn verwijderd. Gebruik
+uitsluitend `tools/app_check.py`. De APK, analysebestanden en `debug/` zijn
 uitgesloten van Git. Commit nooit HAR-bestanden, cookies, tokens, wachtwoorden
 of ingelogde HTML. Verwerk nieuwe API-inzichten in synthetische fixtures en
 controleer daarna met een bestaande sessie voordat je opnieuw MFA vraagt.

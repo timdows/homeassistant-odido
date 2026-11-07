@@ -61,7 +61,9 @@ stubs["homeassistant.helpers.aiohttp_client"].async_get_clientsession = lambda h
 )
 stubs["homeassistant.helpers.selector"].TextSelector = lambda config: str
 stubs["homeassistant.helpers.selector"].TextSelectorConfig = lambda **kwargs: kwargs
-stubs["homeassistant.helpers.selector"].TextSelectorType = types.SimpleNamespace(PASSWORD="password")
+stubs["homeassistant.helpers.selector"].TextSelectorType = types.SimpleNamespace(
+    PASSWORD="password"
+)
 with patch.dict(sys.modules, stubs):
     flow_module = importlib.import_module(
         "custom_components.odido_mobile_usage.config_flow"
@@ -69,25 +71,15 @@ with patch.dict(sys.modules, stubs):
 
 
 class FlowTests(unittest.IsolatedAsyncioTestCase):
-    async def test_import_validates_existing_session_without_logging_in(self):
-        result=await self.flow.async_step_session({'username':'test@example.invalid','cookies':'{"session":"fake"}'})
-        self.assertEqual(result['type'],'create_entry')
-        self.client.async_start_login.assert_not_awaited()
-        self.client.async_get_usage.assert_awaited_once()
-        self.assertEqual(result['data']['password'],'')
-
-    async def test_invalid_import_never_reaches_server(self):
-        result=await self.flow.async_step_session({'username':'test@example.invalid','cookies':'not json'})
-        self.assertEqual(result['errors']['base'],'invalid_auth')
-        self.client.async_get_usage.assert_not_awaited()
-
     async def test_unknown_error_text_is_not_exposed(self):
         await self.begin()
-        self.client.async_get_usage.side_effect=flow_module.OdidoParseError('private-secret-cookie')
-        self.client.export_cookies.return_value={}
-        result=await self.flow.async_step_verify({'code':'9876'})
-        self.assertNotIn('private-secret-cookie',str(result))
-        self.assertIn('"stage": "usage"',result['description_placeholders']['details'])
+        self.client.async_get_usage.side_effect = flow_module.OdidoParseError(
+            "private-secret-cookie"
+        )
+        self.client.export_session.return_value = {}
+        result = await self.flow.async_step_verify({"code": "9876"})
+        self.assertNotIn("private-secret-cookie", str(result))
+        self.assertIn('"stage": "usage"', result["description_placeholders"]["details"])
 
     async def test_failed_finalization_aborts_instead_of_reusing_code(self):
         await self.begin()
@@ -104,9 +96,15 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.client.async_start_login = AsyncMock(return_value=True)
         self.client.async_submit_code = AsyncMock()
         self.client.async_get_usage = AsyncMock()
-        self.client.export_cookies.return_value = {"session": "fake"}
+        self.client.export_cookies.return_value = {}
+        self.client.export_session.return_value = {
+            "version": 1,
+            "token": "fake-app-token",
+        }
         self.client.debug_summary.return_value = {}
-        self.patch = patch.object(flow_module, "OdidoClient", return_value=self.client)
+        self.patch = patch.object(
+            flow_module, "OdidoAppClient", return_value=self.client
+        )
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.flow = flow_module.OdidoConfigFlow()
@@ -127,7 +125,9 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         result = await self.flow.async_step_verify({"code": "123456"})
         self.client.async_get_usage.assert_awaited_once()
         self.assertEqual(result["type"], "create_entry")
-        self.assertEqual(result["data"]["cookies"], {"session": "fake"})
+        self.assertEqual(
+            result["data"]["app_session"], {"version": 1, "token": "fake-app-token"}
+        )
         self.assertNotIn("code", result["data"])
 
     async def test_invalid_code_keeps_same_client(self):
@@ -146,8 +146,10 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             "incomplete"
         )
         result = await self.flow.async_step_verify({"code": "123456"})
-        self.assertEqual(result['type'], 'create_entry')
-        self.assertEqual(result['data']['cookies'], {'session':'fake'})
+        self.assertEqual(result["type"], "create_entry")
+        self.assertEqual(
+            result["data"]["app_session"], {"version": 1, "token": "fake-app-token"}
+        )
 
     async def test_reauth_replaces_existing_entry_and_usage_url(self):
         self.flow.entry = Mock()
@@ -163,31 +165,75 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         result = await self.flow.async_step_verify({"code": "123456"})
         self.assertEqual(result["type"], "reauth_complete")
         self.assertEqual(result["data"]["password"], "new")
-        self.assertEqual(result["data"]["usage_url"], "https://www.odido.nl/my/tegoed")
+        self.assertNotIn("usage_url", result["data"])
+        self.assertEqual(result["data"]["transport"], "app")
+        self.assertNotIn("cookies", result["data"])
 
     async def test_verify_without_pending_client_aborts(self):
         self.assertEqual(
             await self.flow.async_step_verify({"code": "123456"}),
             {"type": "abort", "reason": "invalid_auth"},
         )
+
     async def test_app_route_persists_only_verified_app_session(self):
         from custom_components.odido_mobile_usage import app_api
-        self.client.export_session.return_value = {'version':1, 'token':'fake-app-token'}
-        with patch.object(app_api, 'OdidoAppClient', return_value=self.client):
-            result = await self.flow.async_step_app({'username':'test@example.invalid','password':'fake-password'})
-            if result.get('step_id') == 'verify':
-                result = await self.flow.async_step_verify({'code':'1234'})
-        self.assertEqual(result['type'], 'create_entry')
-        self.assertEqual(result['data']['transport'], 'app')
-        self.assertEqual(result['data']['app_session'], {'version':1,'token':'fake-app-token'})
-        self.assertNotIn('cookies', result['data'])
+
+        self.client.export_session.return_value = {
+            "version": 1,
+            "token": "fake-app-token",
+        }
+        with patch.object(app_api, "OdidoAppClient", return_value=self.client):
+            result = await self.flow.async_step_app(
+                {"username": "test@example.invalid", "password": "fake-password"}
+            )
+            if result.get("step_id") == "verify":
+                result = await self.flow.async_step_verify({"code": "1234"})
+        self.assertEqual(result["type"], "create_entry")
+        self.assertEqual(result["data"]["transport"], "app")
+        self.assertEqual(
+            result["data"]["app_session"], {"version": 1, "token": "fake-app-token"}
+        )
+        self.assertNotIn("cookies", result["data"])
 
     async def test_app_parse_failure_retains_completed_session(self):
-        self.flow._transport = 'app'
+        self.flow._transport = "app"
         self.flow._client = self.client
-        self.flow._credentials = {'username':'test@example.invalid','password':'fake-password'}
-        self.client.export_session.return_value = {'version':1,'token':'fake-app-token'}
-        self.client.async_get_usage.side_effect = flow_module.OdidoParseError('unknown app fields')
+        self.flow._credentials = {
+            "username": "test@example.invalid",
+            "password": "fake-password",
+        }
+        self.client.export_session.return_value = {
+            "version": 1,
+            "token": "fake-app-token",
+        }
+        self.client.async_get_usage.side_effect = flow_module.OdidoParseError(
+            "unknown app fields"
+        )
         result = await self.flow._finish()
-        self.assertEqual(result['type'], 'create_entry')
-        self.assertEqual(result['data']['app_session']['token'], 'fake-app-token')
+        self.assertEqual(result["type"], "create_entry")
+        self.assertEqual(result["data"]["app_session"]["token"], "fake-app-token")
+
+    async def test_legacy_repair_always_creates_app_client_and_removes_cookies(self):
+        self.flow.entry = Mock()
+        await self.flow.async_step_reauth(
+            {
+                "username": "test@example.invalid",
+                "password": "old",
+                "transport": "website",
+                "cookies": {"session": "old-cookie"},
+                "usage_url": "https://www.odido.nl/my/tegoed",
+            }
+        )
+        self.assertEqual(self.flow._transport, "app")
+        await self.flow.async_step_reauth_confirm({"password": "new"})
+        result = await self.flow.async_step_verify({"code": "1234"})
+        self.assertEqual(result["data"]["transport"], "app")
+        self.assertNotIn("cookies", result["data"])
+        self.assertNotIn("usage_url", result["data"])
+        self.assertTrue(result["data"]["app_session"])
+
+    async def test_user_has_no_website_or_cookie_menu(self):
+        result = await self.flow.async_step_user()
+        self.assertEqual(result["type"], "form")
+        self.assertEqual(result["step_id"], "login")
+        self.assertFalse(hasattr(self.flow, "async_step_session"))

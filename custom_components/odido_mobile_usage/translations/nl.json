@@ -3,12 +3,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Mijn Odido verbinden",
-        "menu_options": {
-          "login": "Aanmelden met wachtwoord",
-          "session": "Bestaande sessie gebruiken",
-          "app": "App-route (browseraanmelding)"
-        }
+        "title": "Mijn Odido verbinden"
       },
       "verify": {
         "title": "Vul de bevestigingscode in",
@@ -18,26 +13,18 @@
         }
       },
       "reauth_confirm": {
-        "title": "Koppel Mijn Odido opnieuw",
-        "description": "Je Odido-sessie is verlopen. Vul je wachtwoord in om opnieuw in te loggen.",
+        "title": "Odido app-aanmelding",
+        "description": "Meld aan via de officiële app-route. Je bestaande sensoren blijven behouden. Na sms-verificatie wordt het app-token bewaard; verbruik wordt uitsluitend via de app-API opgehaald.",
         "data": {
           "password": "Wachtwoord"
         }
       },
       "login": {
-        "title": "Koppel Mijn Odido",
-        "description": "Log in met je Mijn Odido-account. Odido kan een bevestigingscode per e-mail of sms sturen.",
+        "title": "Odido app-aanmelding",
+        "description": "Meld aan via de officiële app-route. Je bestaande sensoren blijven behouden. Na sms-verificatie wordt het app-token bewaard; verbruik wordt uitsluitend via de app-API opgehaald.",
         "data": {
           "username": "E-mailadres",
           "password": "Wachtwoord"
-        }
-      },
-      "session": {
-        "title": "Bestaande sessie",
-        "description": "Gebruik alleen je eigen aangemelde sessie. De sessie wordt gecontroleerd voordat deze wordt opgeslagen.",
-        "data": {
-          "username": "E-mailadres",
-          "cookies": "Sessiecookies (JSON)"
         }
       }
     },

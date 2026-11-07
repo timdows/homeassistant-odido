@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .const import CONF_COOKIES, DEFAULT_USAGE_URL, PLATFORMS
+from .const import PLATFORMS
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -15,22 +15,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
     from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-    from .api import OdidoClient
+    from .app_api import OdidoAppClient
     from .coordinator import OdidoDataUpdateCoordinator
 
-    client_type = OdidoClient
-    auth = {"cookies": entry.data.get(CONF_COOKIES)}
-    if entry.data.get("transport") == "app":
-        from .app_api import OdidoAppClient
-        client_type = OdidoAppClient
-        auth = {"app_session": entry.data.get("app_session")}
-    client = client_type(
+    # Legacy website entries require an explicit app sign-in; never use cookies
+    # or submit stored passwords from a background update.
+    client = OdidoAppClient(
         async_get_clientsession(hass),
         entry.data[CONF_USERNAME],
-        entry.data[CONF_PASSWORD],
-        usage_url=DEFAULT_USAGE_URL,
-        **auth,
-        auto_reauth_blocked=entry.data.get("auto_reauth_blocked", False),
+        entry.data.get(CONF_PASSWORD, ""),
+        app_session=entry.data.get("app_session")
+        if entry.data.get("transport") == "app"
+        else None,
     )
     coordinator = OdidoDataUpdateCoordinator(hass, entry, client)
     entry.runtime_data = coordinator

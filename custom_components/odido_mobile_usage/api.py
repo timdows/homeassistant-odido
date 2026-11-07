@@ -1,9 +1,4 @@
-"""Small, traceable client for the Mijn Odido website.
-
-Odido does not publish a consumer usage API. This client intentionally models
-the website forms instead of relying on browser automation. Keep all website
-specific behavior in this module so changes can be debugged safely.
-"""
+"""Browser authentication support for the official app handoff only."""
 
 from __future__ import annotations
 
@@ -18,9 +13,8 @@ from urllib.parse import urljoin
 from aiohttp import ClientError, ClientSession, ClientTimeout, CookieJar
 from yarl import URL
 
-from .const import DEFAULT_USAGE_URL, LOGIN_URL
+from .const import LOGIN_URL
 from .cookie_store import valid_cookies
-from .website import UsageParseError, parse_usage
 
 
 class OdidoError(Exception):
@@ -162,11 +156,10 @@ class OdidoClient:
     """Use an account-specific jar, never HA's shared session cookies."""
 
     def __init__(
-        self, session, username, password, *, usage_url=DEFAULT_USAGE_URL, cookies=None, auto_reauth_blocked=False
+        self, session, username, password, *, cookies=None, auto_reauth_blocked=False
     ):
         self.username = username
         self._password = password
-        self.usage_url = self._safe_url(usage_url)
         self._pending_form = None
         self._pending_url = None
         self._finalize_form = None
@@ -205,9 +198,13 @@ class OdidoClient:
                     headers = {"Referer": LOGIN_URL, "Origin": "https://www.odido.nl"}
                     if ajax:
                         headers["X-Requested-With"] = "XMLHttpRequest"
-                        headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
+                        headers["Content-Type"] = (
+                            "application/x-www-form-urlencoded; charset=UTF-8"
+                        )
                     if expect_json:
-                        headers["Accept"] = "application/json, text/javascript, */*; q=0.01"
+                        headers["Accept"] = (
+                            "application/json, text/javascript, */*; q=0.01"
+                        )
                     async with session.request(
                         method, url, data=data, allow_redirects=False, headers=headers
                     ) as response:
@@ -226,11 +223,21 @@ class OdidoClient:
                         if response.status >= 400:
                             raise OdidoConnectionError(f"Odido HTTP {response.status}")
                         body = await response.text()
-                        forms = parse_forms(body) if body.lstrip().startswith("<") else []
+                        forms = (
+                            parse_forms(body) if body.lstrip().startswith("<") else []
+                        )
                         self._last_response = {
                             "status": response.status,
-                            "format": "html" if body.lstrip().startswith("<") else "json" if body.lstrip("\ufeff \t\r\n").startswith(("{", "[")) else "other",
-                            "page": "login" if _find_login_form(forms) else "verification" if _find_code_form(forms) else "other",
+                            "format": "html"
+                            if body.lstrip().startswith("<")
+                            else "json"
+                            if body.lstrip("\ufeff \t\r\n").startswith(("{", "["))
+                            else "other",
+                            "page": "login"
+                            if _find_login_form(forms)
+                            else "verification"
+                            if _find_code_form(forms)
+                            else "other",
                             "length": len(body),
                             "redirected": url != original_url,
                         }
@@ -243,7 +250,9 @@ class OdidoClient:
         return await self._request("GET", url)
 
     async def _post_form(self, url, data, *, ajax=False, expect_json=False):
-        return await self._request("POST", url, data, ajax=ajax, expect_json=expect_json)
+        return await self._request(
+            "POST", url, data, ajax=ajax, expect_json=expect_json
+        )
 
     login_url = LOGIN_URL
 
@@ -337,7 +346,9 @@ class OdidoClient:
                 detail = ""
                 if summary:
                     detail = f" (HTTP {summary['status']}; format={summary['format']}; page={summary['page']}; redirected={summary['redirected']}; length={summary['length']})"
-                raise OdidoParseError("Invalid Odido verification response" + detail) from None
+                raise OdidoParseError(
+                    "Invalid Odido verification response" + detail
+                ) from None
             if not isinstance(result, dict) or result.get("valid") is not True:
                 raise OdidoInvalidAuth("Odido rejected the verification code")
             final = self._finalize_form
@@ -375,120 +386,6 @@ class OdidoClient:
         self._pending_form = self._pending_url = None
         self._authenticated = True
 
-    async def async_get_usage(self):
-        try:
-            return await self._get_usage_once()
-        except OdidoInvalidAuth:
-            if self.auto_reauth_blocked or not self._password or not self._cookies or self._pending_form is not None:
-                raise
-            # Persisted by the coordinator even when login/transport/MFA fails.
-            # Keep trust cookies and never request another SMS on reload/restart.
-            self.auto_reauth_blocked = True
-            if await self.async_start_login(preserve_cookies=True):
-                raise OdidoInvalidAuth("Odido requires verification; sign in once") from None
-            result = await self._get_usage_once()
-            self.auto_reauth_blocked = False
-            return result
-
-    async def _get_usage_once(self):
-        if self._pending_form is not None:
-            raise OdidoInvalidAuth("Verification is not complete")
-        pages = []
-        for url in (self.usage_url, "https://www.odido.nl/my/verbruik-en-kosten"):
-            result_url, html = await self._get_text(url)
-            if URL(result_url).path == "/my/abonnement-overzicht":
-                await self._select_only_subscription(result_url, html)
-                result_url, html = await self._get_text(url)
-                if URL(result_url).path == "/my/abonnement-overzicht":
-                    raise OdidoParseError(
-                        "Odido did not select the mobile subscription"
-                    )
-            if not _looks_logged_in(result_url, html):
-                raise OdidoInvalidAuth("Odido session expired")
-            html = await self._load_usage_sections(url, html)
-            pages.append(html)
-        try:
-            return parse_usage(*pages)
-        except UsageParseError as err:
-            raise OdidoParseError(
-                f"Odido usage sections incomplete: {err}"
-            ) from None
-
-    async def _load_usage_sections(self, url, html):
-        """Load the explicit read-only forms used by the site's usage widgets.
-
-        Never replay arbitrary buttons, invoice graphs or the Refresh action.
-        """
-        path = URL(url).path
-        if path not in ("/my/tegoed", "/my/verbruik-en-kosten"):
-            raise OdidoParseError("Unexpected usage page")
-        suffix = ".BundleUsage.GetStatus" if path == "/my/tegoed" else ".SimUsageDetail.GetUsageTotals"
-        forms = [form for form in parse_forms(html) if form.method == "post"
-                 and any(key.endswith(suffix) for key in form.fields)
-                 and URL(self._safe_url(urljoin(url, form.action))).path == path]
-        page = "allowance" if path == "/my/tegoed" else "details"
-        self._usage_debug[page] = {"read_forms": len(forms), "loaded_sections": 0}
-        if not forms:
-            return html
-        if len(forms) > 4:
-            raise OdidoParseError("Unexpected number of usage initialization forms")
-        fragments = []
-        for form in forms:
-            _, fragment = await self._post_form(self._safe_url(urljoin(url, form.action)), dict(form.fields), ajax=True)
-            parsed = parse_forms(fragment)
-            if _find_login_form(parsed) or _find_code_form(parsed):
-                raise OdidoInvalidAuth("Odido usage session expired")
-            if not fragment.lstrip().startswith("<"):
-                raise OdidoParseError("Usage initialization returned no HTML")
-            fragments.append(fragment)
-            self._usage_debug[page]["loaded_sections"] += 1
-        return "<main>" + "\n".join(fragments) + "</main>"
-
-    async def _select_only_subscription(self, url, html):
-        """Follow the account page's own selector; never guess among accounts."""
-        if not self._login_complete(url, html):
-            raise OdidoInvalidAuth("Odido session expired")
-        forms = parse_forms(html)
-        initial = next(
-            (
-                f
-                for f in forms
-                if any(k.endswith(".ContactDashboard.Initial") for k in f.fields)
-            ),
-            None,
-        )
-        if initial is not None:
-            if initial.method != "post":
-                raise OdidoParseError("Unexpected subscription form")
-            _, html = await self._post_form(
-                self._safe_url(urljoin(url, initial.action)),
-                dict(initial.fields),
-                ajax=True,
-            )
-            forms = parse_forms(html)
-        choices = [
-            (f, name, link_id)
-            for f in forms
-            for name, link_id in f.subscription_choices
-        ]
-        if len(choices) != 1:
-            raise OdidoParseError("Expected exactly one mobile subscription")
-        form, button, link_id = choices[0]
-        selected = next(
-            (
-                key
-                for key in form.fields
-                if key.endswith(".ContactDashboard.SelectedSubscriber")
-            ),
-            None,
-        )
-        if selected is None or form.method != "post":
-            raise OdidoParseError("Subscription selection field missing")
-        data = {**form.fields, selected: link_id, button: ""}
-        await self._post_form(
-            self._safe_url(urljoin(url, form.action)), data, ajax=True
-        )
-
     def _restore_cookies(self, payload):
         """Restore exact wire encoding and scope, including session cookies."""
         if payload.get("version") == 2:
@@ -503,7 +400,9 @@ class OdidoClient:
                         cookie[key] = item[key]
                 if not item.get("host_only", False):
                     cookie["domain"] = domain
-                self._cookies.update_cookies({cookie.key: cookie}, response_url=URL("https://" + domain + "/"))
+                self._cookies.update_cookies(
+                    {cookie.key: cookie}, response_url=URL("https://" + domain + "/")
+                )
         else:
             # Old versions stored values only. Odido emits raw cookie tokens;
             # SimpleCookie assignment would add quotes to tokens containing '='.
@@ -525,15 +424,30 @@ class OdidoClient:
             domain = cookie["domain"].lstrip(".")
             if domain not in ("www.odido.nl", "odido.nl"):
                 continue
-            item = {"name": cookie.key, "value": cookie.value, "coded_value": cookie.coded_value,
-                    "domain": domain, "host_only": ((domain, cookie.key) in self._cookies._host_only_cookies or (domain, cookie["path"].rstrip("/"), cookie.key) in self._cookies._host_only_cookies)}
+            item = {
+                "name": cookie.key,
+                "value": cookie.value,
+                "coded_value": cookie.coded_value,
+                "domain": domain,
+                "host_only": (
+                    (domain, cookie.key) in self._cookies._host_only_cookies
+                    or (domain, cookie["path"].rstrip("/"), cookie.key)
+                    in self._cookies._host_only_cookies
+                ),
+            }
             for key in ("path", "secure", "httponly", "samesite", "expires"):
                 item[key] = cookie[key]
-            expiry = self._cookies._expirations.get((cookie["domain"], cookie["path"].rstrip("/"), cookie.key))
+            expiry = self._cookies._expirations.get(
+                (cookie["domain"], cookie["path"].rstrip("/"), cookie.key)
+            )
             if expiry is not None:
                 item["expires"] = formatdate(expiry, usegmt=True)
             items.append(item)
         return {"version": 2, "items": items} if items else {}
 
     def debug_summary(self):
-        return {"verification_pending": self._pending_form is not None, "usage_structure": self._usage_debug, "last_response": self._last_response}
+        return {
+            "verification_pending": self._pending_form is not None,
+            "usage_structure": self._usage_debug,
+            "last_response": self._last_response,
+        }

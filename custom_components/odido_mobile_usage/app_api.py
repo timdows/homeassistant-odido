@@ -25,7 +25,7 @@ from .api import (
 )
 from .app_const import APP_LOGIN_URL, CAPI_BASE, CLIENT_ID, CLIENT_SECRET, RETURN_KEY
 from .cookie_store import valid_cookies
-from .website import UsageData, number
+from .usage import UsageData, number
 
 
 def presentation_gb(value):

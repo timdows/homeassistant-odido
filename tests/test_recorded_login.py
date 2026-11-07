@@ -4,8 +4,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
-from test_website import ALLOWANCE, DETAILS
-
 from custom_components.odido_mobile_usage import api
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -16,51 +14,27 @@ AUTH = '<a href="/my/abonnement-overzicht">Mijn account</a>'
 class RecordedFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_json_bom_does_not_reject_valid_code(self):
         client = await self.client()
-        client._post_form.side_effect = [(api.LOGIN_URL, '\ufeff{"valid":true}\r\n'), ("https://www.odido.nl/my/abonnement-overzicht", AUTH)]
+        client._post_form.side_effect = [
+            (api.LOGIN_URL, '\ufeff{"valid":true}\r\n'),
+            ("https://www.odido.nl/my/abonnement-overzicht", AUTH),
+        ]
         await client.async_submit_code("9876")
         self.assertTrue(client._authenticated)
 
     async def test_non_json_error_includes_safe_response_classification(self):
         client = await self.client()
-        client._post_form.return_value=(api.LOGIN_URL,'<html>private-secret</html>')
-        client._last_response={'status':200,'format':'html','page':'login','redirected':False,'length':32}
+        client._post_form.return_value = (api.LOGIN_URL, "<html>private-secret</html>")
+        client._last_response = {
+            "status": 200,
+            "format": "html",
+            "page": "login",
+            "redirected": False,
+            "length": 32,
+        }
         with self.assertRaises(api.OdidoParseError) as err:
-            await client.async_submit_code('9876')
-        self.assertIn('format=html; page=login',str(err.exception))
-        self.assertNotIn('private-secret',str(err.exception))
-
-    async def test_select_single_mobile_subscription_after_login(self):
-        client = api.OdidoClient(Mock(), "user", "password")
-        initial = '<form action="/my/abonnement-overzicht" method="post"><input type="hidden" name="Section1.ContactDashboard.Initial" value="true"></form>'
-        selector = """<form action="/my/abonnement-overzicht" method="post"><input type="hidden" name="Section1.ContactDashboard.SelectedSubscriber"><button type="button" name="Section1.ContactDashboard.SwitchMobileSubscription" onclick="SelectSubscriberByLinkId(this, 'fake-link-id')">Bekijk</button></form>"""
-        account_url = "https://www.odido.nl/my/abonnement-overzicht"
-        client._get_text = AsyncMock(
-            side_effect=[
-                (account_url, AUTH + initial),
-                (client.usage_url, AUTH + ALLOWANCE),
-                ("https://www.odido.nl/my/verbruik-en-kosten", AUTH + DETAILS),
-            ]
-        )
-        client._post_form = AsyncMock(
-            side_effect=[(account_url, selector), (account_url, "")]
-        )
-        usage = await client.async_get_usage()
-        self.assertEqual(usage.remaining_gb, 7.5)
-        posted = client._post_form.await_args_list[1].args[1]
-        self.assertEqual(
-            posted["Section1.ContactDashboard.SelectedSubscriber"], "fake-link-id"
-        )
-        self.assertIn("Section1.ContactDashboard.SwitchMobileSubscription", posted)
-
-    async def test_multiple_subscriptions_are_not_guessed(self):
-        client = api.OdidoClient(Mock(), "user", "password")
-        selector = """<form method="post"><input type="hidden" name="Section1.ContactDashboard.SelectedSubscriber"><button type="button" name="Section1.ContactDashboard.SwitchMobileSubscription" onclick="SelectSubscriberByLinkId(this, 'one')"></button><button type="button" name="Section1.ContactDashboard.SwitchMobileSubscription" onclick="SelectSubscriberByLinkId(this, 'two')"></button></form>"""
-        client._post_form = AsyncMock()
-        with self.assertRaises(api.OdidoParseError):
-            await client._select_only_subscription(
-                "https://www.odido.nl/my/abonnement-overzicht", AUTH + selector
-            )
-        client._post_form.assert_not_awaited()
+            await client.async_submit_code("9876")
+        self.assertIn("format=html; page=login", str(err.exception))
+        self.assertNotIn("private-secret", str(err.exception))
 
     async def client(self):
         client = api.OdidoClient(Mock(), "test@example.invalid", "fake-password")

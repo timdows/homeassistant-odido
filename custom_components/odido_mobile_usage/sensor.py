@@ -19,7 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import OdidoDataUpdateCoordinator
-from .website import UsageData
+from .usage import UsageData
 
 
 @dataclass(frozen=True, kw_only=True)

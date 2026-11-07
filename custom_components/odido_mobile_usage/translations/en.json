@@ -3,12 +3,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect Mijn Odido",
-        "menu_options": {
-          "login": "Sign in with password",
-          "session": "Use existing session",
-          "app": "App route (browser sign-in)"
-        }
+        "title": "Connect Mijn Odido"
       },
       "verify": {
         "title": "Enter confirmation code",
@@ -18,26 +13,18 @@
         }
       },
       "reauth_confirm": {
-        "title": "Reconnect Mijn Odido",
-        "description": "Your Odido session expired. Enter your password to sign in again.",
+        "title": "Odido app sign-in",
+        "description": "Sign in through the official app route. Existing sensors are retained. After SMS verification the app token is saved; usage is fetched exclusively through the app API.",
         "data": {
           "password": "Password"
         }
       },
       "login": {
-        "title": "Connect to Mijn Odido",
-        "description": "Sign in with your Mijn Odido account. Odido may send a confirmation code by email or SMS.",
+        "title": "Odido app sign-in",
+        "description": "Sign in through the official app route. Existing sensors are retained. After SMS verification the app token is saved; usage is fetched exclusively through the app API.",
         "data": {
           "username": "Email address",
           "password": "Password"
-        }
-      },
-      "session": {
-        "title": "Existing session",
-        "description": "Use only your own completed session. Usage is checked before saving it.",
-        "data": {
-          "username": "Email address",
-          "cookies": "Session cookies (JSON)"
         }
       }
     },
